@@ -1,0 +1,20 @@
+services:
+
+  cli:
+    image: denoland/deno:latest
+    platform: linux/amd64
+    security_opt: [ no-new-privileges:true ]
+    working_dir: "/home/node/app"
+    volumes:
+      - ./:/home/node/
+    entrypoint: "/bin/bash"
+    tty: true
+    stdin_open: true
+    stop_grace_period: 0s
+    ports:
+      - "64229:64229"
+
+networks:
+  default:
+    external: true
+    name: DEV

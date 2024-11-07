@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.ns"],         // Deno namespace types for compatibility
+    "strict": true              // Enables strict type-checking
+  },
+  "tasks": {
+    "test": "deno test"             // Run all test files
+  },
+  "fmt": {
+    "options": {
+      "useTabs": false,            // Use spaces instead of tabs
+      "lineWidth": 80,             // Set max line width for formatting
+      "indentWidth": 2             // Set indentation width
+    }
+  }
+}

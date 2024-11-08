@@ -1,7 +1,8 @@
-import { Diff, Schema } from '../src/mod.ts';
+import { Diff, Schema, Client } from '../src/mod.ts';
 
-const URI = 'postgresql://test_owner:PASSWORD@ep-sparkling-poetry-a7pov7jr.ap-southeast-2.aws.neon.tech/test?sslmode=require';
-const schema1 = await Schema.fromDatabase(URI);
+const URI = Deno.env.get('DATABASE_URI');
+const client = new Client(URI);
+const schema1 = await Schema.fromDatabase(client);
 
 const schema2 = new Schema({
   posts: {
@@ -40,7 +41,7 @@ const diff = new Diff(schema1, schema2);
 
 const migration = diff.getMigration();
 // console.log(migration.getOperations());
-const queries = await migration.apply(URI);
+const queries = await migration.apply(client);
 console.log('Migration applied', queries);
 
 const rollback = diff.getRollback();

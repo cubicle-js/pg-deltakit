@@ -45,9 +45,8 @@ export class Migration {
     return this;
   }
   
-  async apply(uri : string) {
+  async apply(client : Client) {
     const queries = this.toSQL();
-    const client = new Client(uri);
     
     await client.connect();
     const transaction = await client.createTransaction("migration", {

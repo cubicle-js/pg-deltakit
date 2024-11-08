@@ -2,6 +2,8 @@ import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 import { Utils } from "./utils.ts";
 import { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
 
+export { Client };
+
 const normalisations = {
   type: {
     "varchar": "character varying",
@@ -66,9 +68,7 @@ export class Schema {
     return this.definition[table][column];
   }
 
-  public static async fromDatabase(uri : string, schema:string='public'): Promise<Schema> {
-    const client = new Client(uri);
-
+  public static async fromDatabase(client : Client, schema:string='public'): Promise<Schema> {
     await client.connect();
 
     let definition: Partial<SchemaDefinition> = {};

@@ -1,7 +1,7 @@
 // src/mod.ts
 
 // Re-export core modules
-export { Schema } from "./core/schema.ts";
+export { Schema, Client } from "./core/schema.ts";
 export { Diff } from "./core/diff.ts";
 
 // Re-export types for external use

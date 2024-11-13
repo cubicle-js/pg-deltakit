@@ -20,7 +20,7 @@ const schema2 = new Schema({
     body: {
       type: 'text',
       nullable: false,
-      default: 'Hello, World!',
+      default: `G'day mate!`,
     },
     created_at: 'timestamp',
     updated_at: 'timestamp',
@@ -41,6 +41,7 @@ const diff = new Diff(schema1, schema2);
 
 const migration = diff.getMigration();
 // console.log(migration.getOperations());
+// console.log(migration.toSQL());
 const queries = await migration.apply(client);
 console.log('Migration applied', queries);
 

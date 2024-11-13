@@ -4,10 +4,11 @@ services:
     image: denoland/deno:latest
     platform: linux/amd64
     security_opt: [ no-new-privileges:true ]
-    working_dir: "/home/node"
+    working_dir: "/home/node/app"
     env_file: ".env"
     volumes:
-      - ./:/home/node/
+      - ./:/home/node/app
+      - ../esc:/home/node/esc
     entrypoint: "/bin/bash"
     tty: true
     stdin_open: true

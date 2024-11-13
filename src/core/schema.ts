@@ -1,6 +1,5 @@
 import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
-import { Utils } from "./utils.ts";
-import { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
+import type { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
 
 export { Client };
 
@@ -76,8 +75,8 @@ export class Schema {
     const queryColumns = await client.queryArray("SELECT table_name, column_name, data_type, character_maximum_length AS length, is_nullable = 'YES' AS nullable, column_default AS default_info FROM information_schema.columns WHERE table_schema = '"+schema+"';");
     queryColumns.rows.map((row: any) => { 
       const [ table, column, type, length, nullable, default_info ] = row;
-      const default_value = default_info === null || default_info.substring(0, 6) == 'NULL::' ? null : Utils.noQuotes(default_info.split('::').shift());
-      // console.log(table, column, type, length, nullable, default_value);
+      const default_value = default_info === null || default_info.substring(0, 6) == 'NULL::' ? null : default_info.split('::').shift();
+      console.log(table, column, type, length, nullable, default_value);
 
       if (typeof definition[table] === 'undefined') {
         definition[table] = {} as TableDefinition;

@@ -1,7 +1,8 @@
-import { Schema, ColumnDefinition } from './schema.ts';
+import { Schema } from './schema.ts';
 import { Migration } from './migration.ts';
 import { Utils } from './utils.ts';
 
+import type { ColumnDefinition } from '../types/index.d.ts';
 
 export class Diff {
   protected source: Schema;
@@ -72,7 +73,7 @@ export class Diff {
         const columnInDestination = destinationColumns.includes(column);
         const sourceColumnDefition = columnInSource ? source.getColumnDefinition(table, column) : {} as ColumnDefinition;
         const destinationColumnDefition = columnInDestination ? destination.getColumnDefinition(table, column) : {} as ColumnDefinition;
-        const changes = Utils.diffColumns(sourceColumnDefition, destinationColumnDefition);
+        const changes = Diff.diffColumns(sourceColumnDefition, destinationColumnDefition);
 
         // if column exists in source XOR destination, add drop/create operation to migration
         if (columnInSource != columnInDestination) {
@@ -101,6 +102,26 @@ export class Diff {
     //////////////////////////
     
     return migration;
+  }
+
+  static diffColumns(
+    objA: ColumnDefinition,
+    objB: ColumnDefinition,
+  ): { from: Partial<ColumnDefinition>, to: Partial<ColumnDefinition> } {
+    const from: Partial<ColumnDefinition> = {};
+    const to: Partial<ColumnDefinition> = {};
+  
+    // Combine both keys from objA and objB
+    const keys = Utils.unique(Utils.combine(Object.keys(objA), Object.keys(objB)));
+  
+    keys.forEach(key => {
+      if (objA[key] !== objB[key]) {
+        from[key] = objA[key];
+        to[key] = objB[key];
+      }
+    });
+  
+    return { from, to };
   }
 
 }

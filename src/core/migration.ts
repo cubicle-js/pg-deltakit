@@ -1,9 +1,10 @@
 import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
-import { TransactionError } from "https://deno.land/x/postgres@v0.17.0/query/transaction.ts";
+import { TransactionError } from "https://deno.land/x/postgres@v0.17.0/client/error.ts";
 
-import { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
+import type { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
 
-import { Utils } from "./utils.ts";
+//import { esc, escID } from 'https://raw.githubusercontent.com/cubicle-js/esc/ff643b1d230c4c8b694eff3a2752d957fbd4cf64/src/mod.ts';
+import { quote } from '../../../esc/src/mod.ts';
 
 
 
@@ -55,7 +56,19 @@ export class Migration {
 
     await transaction.begin();
     for (const query of queries) {
-      await transaction.queryArray(query);
+      try {
+        await transaction.queryArray(query);
+      }
+      catch (e) {
+        if (e instanceof TransactionError) {
+          // await transaction.rollback();
+          // await client.end(); 
+          console.error('Migration failed:', e.message);
+          console.error('Failing query:', query);
+          throw e;
+        }
+      }
+      // await transaction.queryArray(query);
     }
     await transaction.commit();
     await client.end(); 
@@ -73,8 +86,8 @@ export class Migration {
       // Tables
       if(operation.target === 'tables') {
         switch (operation.type) {
-          case 'create': queries.push(`CREATE TABLE ${operation.name} ();`); break;
-          case 'drop': queriesLast.push(`DROP TABLE ${operation.name};`); break;
+          case 'create': queries.push(`CREATE TABLE ${quote.id(operation.name)} ();`); break;
+          case 'drop': queriesLast.push(`DROP TABLE ${quote.id(operation.name)};`); break;
         }
       }
       else {
@@ -86,17 +99,17 @@ export class Migration {
         if (operation.target === 'columns') {
           switch (operation.type) {
             case 'drop':
-              queries.push(`ALTER TABLE ${table} DROP COLUMN ${column};`);
+              queries.push(`ALTER TABLE ${quote.id(table)} DROP COLUMN ${quote.id(column)};`);
               break;
             case 'create':
               // Create Column
               queries.push((() => {
                 const type = this._toSQLType(operation.changes.to);
-                let query = `ALTER TABLE ${table} ADD COLUMN ${column} ${type}`;
+                let query = `ALTER TABLE ${quote.id(table)} ADD COLUMN ${quote.id(column)} ${type}`;
                 if (operation.changes.to?.nullable === false) { query += ' NOT NULL'; }
                 if (operation.changes.to?.default != null) { 
                   // const defaultValue = operation.changes.to?.default.replace('"', '\\"');
-                  query += ` DEFAULT ${Utils.ensureQuotes(operation.changes.to?.default)}`; 
+                  query += ` DEFAULT ${quote.sql(operation.changes.to?.default)}`; 
                 }
                 query += ';';
                 return query;
@@ -105,7 +118,7 @@ export class Migration {
             case 'alter':
               const alter_queries = this._toSQLColumnHelper(table, column, operation.changes);
               if (alter_queries.length > 0) {
-                queries.push(`ALTER TABLE ${table} ` + alter_queries.join(', '));
+                queries.push(`ALTER TABLE ${quote.id(table)} ` + alter_queries.join(', '));
               }
           }
         }
@@ -113,7 +126,7 @@ export class Migration {
         // Constraints
         const constraint_queries = this._toSQLConstraintHelper(table, column, operation.changes);
         if (constraint_queries.length > 0) {
-          queries.push(`ALTER TABLE ${table} ` + constraint_queries.join(', '));
+          queries.push(`ALTER TABLE ${quote.id(table)} ` + constraint_queries.join(', '));
         }
 
       }
@@ -135,16 +148,16 @@ export class Migration {
       subqueries.push(`SET TYPE ${sqlTypes.to}`);
     }
 
-    if (changes.to?.default !== changes.from?.default) {
+    if (quote.sql(changes.to?.default) !== quote.sql(changes.from?.default)) {
       if (changes.to?.default != null) {
-        subqueries.push(`SET DEFAULT ${Utils.ensureQuotes(changes.to?.default)}`);
+        subqueries.push(`SET DEFAULT ${quote.sql(changes.to?.default)}`);
       }
       else if (changes.to?.default == null) {
         subqueries.push(`DROP DEFAULT`);
       }
     }
     
-    if (changes.to?.default !== changes.from?.default) {
+    if (changes.to?.nullable !== changes.from?.nullable) {
       if (changes.to?.nullable == true) {
         subqueries.push(`SET NOT NULL`);
       }
@@ -154,7 +167,7 @@ export class Migration {
     }
     
     return subqueries.map((subquery) => {
-      return `ALTER COLUMN ${column} ${subquery}`;
+      return `ALTER COLUMN ${quote.id(column)} ${subquery}`;
     });
   }
 
@@ -164,20 +177,20 @@ export class Migration {
     if (changes.to?.primary !== changes.from?.primary) {
       const constraint_name = `${table}_${column}_primary`;
       if (changes.to?.primary == true) {
-        subqueries.push(`ADD CONSTRAINT ${constraint_name} PRIMARY KEY (${column})`);
+        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} PRIMARY KEY (${quote.id(column)})`);
       }
       else if (typeof changes.from?.primary !== 'undefined' && changes.to?.primary == false) {
-        subqueries.push(`DROP CONSTRAINT ${constraint_name}`);
+        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
 
     if (changes.to?.unique !== changes.from?.unique) {
       const constraint_name = `${table}_${column}_unique`;
       if (changes.to?.unique == true) {
-        subqueries.push(`ADD CONSTRAINT ${constraint_name} UNIQUE (${column})`);
+        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} UNIQUE (${quote.id(column)})`);
       }
       else if (typeof changes.from?.unique !== 'undefined' && changes.to?.unique == false) {
-        subqueries.push(`DROP CONSTRAINT ${constraint_name}`);
+        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
    
@@ -185,10 +198,10 @@ export class Migration {
       const constraint_name = `${table}_${column}_foreignkey`;
       
       if (changes.to?.references != null) {
-        subqueries.push(`ADD CONSTRAINT ${constraint_name} FOREIGN KEY (${column}) REFERENCES ${changes.to?.references}`);
+        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} FOREIGN KEY (${quote.id(column)}) REFERENCES ${quote.id(changes.to?.references)}`);
       }
       else if (typeof changes.to?.references === 'undefined') {
-        subqueries.push(`DROP CONSTRAINT ${constraint_name}`);
+        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
 

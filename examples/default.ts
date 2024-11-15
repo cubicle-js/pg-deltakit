@@ -34,7 +34,24 @@ const schema2 = new Schema({
     body: 'text',
     created_at: 'timestamp',
     updated_at: 'timestamp',
-  }
+  },
+  users: {
+    id: {type: 'varchar', primary: true, length: 36},
+    name: {type: 'text', default: null, nullable: true},
+    email: 'text',
+    mobile: 'text',
+    created_at: 'timestamp',
+    updated_at: 'timestamp',
+  },
+  profiles: {
+    id: 'varchar',
+    user: {
+      type: 'varchar',
+      references: 'users',
+    },
+    created_at: 'timestamp',
+    updated_at: 'timestamp',
+  },
 });
 
 const diff = new Diff(schema1, schema2);
@@ -48,5 +65,5 @@ console.log('Migration applied', queries);
 const rollback = diff.getRollback();
 // console.log(rollback.getOperations());
 const rollbacks = rollback.toSQL();
-// console.log("ROLLBACK", rollbacks);
+console.log("ROLLBACK", rollbacks);
 // rollback.apply(URI);

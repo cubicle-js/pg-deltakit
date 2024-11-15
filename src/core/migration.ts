@@ -1,4 +1,5 @@
 import { Client, TransactionError } from "./client.ts";
+import { Utils } from "./utils.ts";
 
 import type { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
 
@@ -28,48 +29,82 @@ const operations = [
 
 
 export class Migration {
-  protected operations: Operation[] = [];
+  protected operations: { [key: string]: Operation[]; } = {
+    "create.tables": [],
+    "create.columns": [],
+    "drop.constraints": [],
+    "alter.columns": [],
+    "alter.constraints": [],
+    "create.constraints": [],
+    "drop.columns": [],
+    "drop.tables": [],
+  }
 
+  /**
+   * Add an operation to the migration
+   * @param operation Operation
+   * @returns Migration
+   * 
+   * We need to ensure that operations are carried out in order.
+   * The simplest way to solve this is to manually add operations by "type".
+   * 
+   * The order SHOULD be:
+   * 1. Create Tables
+   * 2. Create Columns
+   * 3. Drop Constraints
+   * 4. Alter Columns
+   * 5. Alter Constraints 
+   * 6. Create Constraints 
+   * 7. Drop Columns
+   * 8. Drop Tables
+   *       
+   * Note: altering a column that had a constraint might require dropping the contraint first and adding it back.
+   * The only great to do that is for operations to be aware of what they depend on. Small rewrite required.
+   */
   addOperation(operation: Operation): Migration {
-    this.operations.push(operation);
+    const operationKey = `${operation.type}.${operation.target}`;
+    this.operations[operationKey].push(operation);
     return this;
   }
 
   getOperations(): Operation[] {
-    return this.operations;
+    // console.log(Object.values(this.operations));
+    return Utils.combine(... Object.values(this.operations)) as Operation[];
   }
 
   reverse(): Migration {
-    this.operations.reverse();
+    this.getOperations().reverse();
     return this;
   }
   
   async apply(client : Client) {
     const queries = this.toSQL();
     
-    await client.connect();
-    const transaction = await client.createTransaction("migration", {
-      isolation_level: "serializable",
-    });
+    try {
+      await client.connect();
+      const transaction = await client.createTransaction("migration", {
+        isolation_level: "serializable",
+      });
 
-    await transaction.begin();
-    for (const query of queries) {
-      try {
-        await transaction.queryArray(query);
-      }
-      catch (e) {
-        if (e instanceof TransactionError) {
-          // await transaction.rollback();
-          // await client.end(); 
-          console.error('Migration failed:', e.message);
-          console.error('Failing query:', query);
-          throw e;
+      await transaction.begin();
+      for (const query of queries) {
+        try {
+          await transaction.queryArray(query); // Attempt to execute the query
+        } 
+        catch (e) {
+          e.cause.query = query;
+          throw new Error(e.message, e);
         }
       }
-      // await transaction.queryArray(query);
+      await transaction.commit(); // Commit the transaction if all queries succeed
+    } catch (e) {
+      console.error(`Transaction failed: ${e.message}`);
+      console.error(`Query failed: ${e.cause.query}`);
+      console.error(`Caused by: ${e.cause.message}`);
+      throw e;
+    } finally {
+      await client.end(); // Ensure the client connection is closed
     }
-    await transaction.commit();
-    await client.end(); 
 
     return queries;
   }
@@ -78,7 +113,7 @@ export class Migration {
     const queries: string[] = [];
     const queriesLast: string[] = [];
 
-    for (const operation of this.operations) {
+    for (const operation of this.getOperations()) {
       const [ table, column ] = operation.name.split('.');
 
       // Tables
@@ -146,21 +181,33 @@ export class Migration {
       subqueries.push(`SET TYPE ${sqlTypes.to}`);
     }
 
-    if (quote.sql(changes.to?.default) !== quote.sql(changes.from?.default)) {
-      if (changes.to?.default != null) {
-        subqueries.push(`SET DEFAULT ${quote.sql(changes.to?.default)}`);
-      }
-      else if (changes.to?.default == null) {
+    if (
+      (typeof(changes.to?.default) === 'undefined') &&
+      (typeof(changes.from?.default) !== 'undefined') 
+    ) {
         subqueries.push(`DROP DEFAULT`);
+    }
+    else if (
+      !(changes.to?.default == null && changes.from?.default == null) && (
+        (typeof(changes.from?.default) === 'undefined') || 
+        (changes.from?.default == null) || 
+        (changes.to?.default == null) || 
+        (quote.sql(changes.to?.default) !== quote.sql(changes.from?.default))
+      )
+     ) {
+      if (changes.to?.default == null) {
+        subqueries.push(`SET DEFAULT NULL`);
+      } else {
+        subqueries.push(`SET DEFAULT ${quote.sql(changes.to?.default)}`);
       }
     }
     
     if (changes.to?.nullable !== changes.from?.nullable) {
       if (changes.to?.nullable == true) {
-        subqueries.push(`SET NOT NULL`);
+        subqueries.push(`DROP NOT NULL`);
       }
       else if (changes.to?.nullable == false) {
-        subqueries.push(`DROP NOT NULL`);
+        subqueries.push(`SET NOT NULL`);
       }
     }
     

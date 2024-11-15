@@ -1,6 +1,10 @@
 export class Utils {
-  static combine<T>(arrayA: T[], arrayB: T[]): T[] {
+  static combineTwo<T>(arrayA: T[], arrayB: T[]): T[] {
     return [...new Set([...arrayA, ...arrayB])];
+  }
+
+  static combine<T>(...arrays: T[][]): T[] {
+    return [...new Set(arrays.flat())];
   }
 
   static unique<T>(array: T[]): T[] {

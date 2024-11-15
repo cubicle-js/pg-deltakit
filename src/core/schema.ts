@@ -5,6 +5,27 @@ import { CONFIG } from "../config.ts";
 export class Schema {
   protected definition: SchemaDefinition;
 
+  private static readonly COLUMN_QUERY = `
+    SELECT 
+      table_name, column_name, data_type, character_maximum_length AS length, 
+      is_nullable = 'YES' AS nullable, column_default AS default_info 
+    FROM information_schema.columns 
+    WHERE table_schema = $1;
+  `;
+
+  private static readonly CONSTRAINT_QUERY = `
+    SELECT 
+      tc.table_name, ccu.column_name, tc.constraint_name, tc.constraint_type, 
+      ccu.table_name AS references, kcu.column_name AS fk_column 
+    FROM information_schema.table_constraints AS tc 
+    JOIN information_schema.constraint_column_usage AS ccu 
+      ON tc.constraint_name = ccu.constraint_name 
+    JOIN information_schema.key_column_usage AS kcu 
+      ON tc.constraint_name = kcu.constraint_name 
+      AND tc.table_schema = kcu.table_schema 
+    WHERE tc.table_schema = $1;
+  `;
+
   constructor(definition: SchemaDefinition) {
     this.definition = definition;
   }
@@ -39,6 +60,16 @@ export class Schema {
       ...this.definition[table][column],
     };
 
+    // Primary enforces nullable to false
+    if (this.definition[table][column].primary) {
+
+      if (this.definition[table][column].nullable == true) {
+        console.warn(`Column ${table}.${column} is primary key, setting nullable to false`);
+        this.definition[table][column].nullable = false;
+      }
+      
+    }
+
     /**
      * Normalize
      * 
@@ -64,11 +95,21 @@ export class Schema {
 
     let definition: Partial<SchemaDefinition> = {};
 
-    const queryColumns = await client.queryArray("SELECT table_name, column_name, data_type, character_maximum_length AS length, is_nullable = 'YES' AS nullable, column_default AS default_info FROM information_schema.columns WHERE table_schema = '"+schema+"';");
+    const queryColumns = await client.queryArray(this.COLUMN_QUERY, [schema]);
     queryColumns.rows.map((row: any) => { 
       const [ table, column, type, length, nullable, default_info ] = row;
-      const default_value = default_info === null || default_info.substring(0, 6) == 'NULL::' ? null : default_info.split('::').shift();
-      console.log(table, column, type, length, nullable, default_value);
+
+      /**
+       * Parse default value meta-data and normalise
+       */
+      const default_value = (default_info === null || default_info.substring(0, 6) == 'NULL::')
+        ? null 
+        : default_info.split('::').shift();
+
+      /**
+       * Debugging
+       */
+      // console.log(table, column, type, length, nullable, default_value, default_info);
 
       if (typeof definition[table] === 'undefined') {
         definition[table] = {} as TableDefinition;
@@ -84,9 +125,13 @@ export class Schema {
       }
     });
 
-    const queryConstraints = await client.queryArray("SELECT tc.table_name, ccu.column_name, tc.constraint_name, tc.constraint_type, ccu.table_name AS references, kcu.column_name AS fk_column FROM information_schema.table_constraints AS tc JOIN information_schema.constraint_column_usage AS ccu ON tc.constraint_name = ccu.constraint_name JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.table_schema = '"+schema+"';");
+    const queryConstraints = await client.queryArray(this.CONSTRAINT_QUERY, [schema]);
     queryConstraints.rows.map((row: any) => { 
       const [ table, column, constraint_name, constraint_type, references, fk_column ] = row;
+
+      /**
+       * Debugging
+       */
       // console.log(table, column, constraint_name, constraint_type, references, fk_column);
 
       if (!definition[table] || !definition[table][column] ) {

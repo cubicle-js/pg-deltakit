@@ -8,4 +8,4 @@ export { Diff } from "./core/diff.ts";
 export type { SchemaDefinition, TableDefinition, ColumnDefinition } from "./types/index.d.ts";
 
 // Export constants or default configurations if needed
-export { DEFAULT_CONFIG } from "./config.ts";
+// export { CONFIG } from "./config.ts";

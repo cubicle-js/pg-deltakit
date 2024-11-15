@@ -1,14 +1,8 @@
 import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 import type { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
+import { CONFIG } from "../config.ts";
 
 export { Client };
-
-const normalisations = {
-  type: {
-    "varchar": "character varying",
-    "timestamp": "timestamp without time zone",
-  }
-};
 
 export class Schema {
   protected definition: SchemaDefinition;
@@ -56,8 +50,8 @@ export class Schema {
      * 
      * @todo: Add more normalisations, see https://github.com/multum/pg-differ/blob/main/lib/types.js
      */
-    Object.keys(normalisations).map((field) => {
-      const mappings = normalisations[field];
+    Object.keys(CONFIG.normalisations).map((field) => {
+      const mappings = CONFIG.normalisations[field];
       const froms = Object.keys(mappings);
       if (froms.includes(this.definition[table][column][field])) {
         this.definition[table][column][field] = mappings[this.definition[table][column][field]];

@@ -3,7 +3,6 @@ import { TransactionError } from "https://deno.land/x/postgres@v0.17.0/client/er
 
 import type { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
 
-//import { esc, escID } from 'https://raw.githubusercontent.com/cubicle-js/esc/ff643b1d230c4c8b694eff3a2752d957fbd4cf64/src/mod.ts';
 import { quote } from '../../../esc/src/mod.ts';
 
 

@@ -1,8 +1,6 @@
-import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
+import { Client, TransactionError } from "./client.ts";
 import type { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
 import { CONFIG } from "../config.ts";
-
-export { Client };
 
 export class Schema {
   protected definition: SchemaDefinition;

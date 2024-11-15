@@ -1,8 +1,9 @@
 // src/mod.ts
 
 // Re-export core modules
-export { Schema, Client } from "./core/schema.ts";
+export { Schema } from "./core/schema.ts";
 export { Diff } from "./core/diff.ts";
+export { Client } from "./core/client.ts";
 
 // Re-export types for external use
 export type { SchemaDefinition, TableDefinition, ColumnDefinition } from "./types/index.d.ts";

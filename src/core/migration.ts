@@ -1,5 +1,4 @@
-import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
-import { TransactionError } from "https://deno.land/x/postgres@v0.17.0/client/error.ts";
+import { Client, TransactionError } from "./client.ts";
 
 import type { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
 

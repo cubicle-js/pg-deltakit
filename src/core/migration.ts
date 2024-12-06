@@ -2,7 +2,7 @@ import { Utils } from "./utils.ts";
 
 import type { Operation, Changes, ColumnDefinition, Client } from "../types/index.d.ts";
 
-import { quote } from '../../../esc/src/mod.ts';
+import { quote } from 'https://raw.githubusercontent.com/cubicle-js/esc/refs/heads/main/src/mod.ts';
 
 
 

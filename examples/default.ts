@@ -1,4 +1,6 @@
-import { Diff, Schema, Client } from '../src/mod.ts';
+import { Diff, Schema } from '../src/mod.ts';
+import { Client } from '../src/core/client/default.ts';
+// import { Client } from '../src/core/client/neon.ts';
 
 const URI = Deno.env.get('DATABASE_URI');
 const client = new Client(URI);

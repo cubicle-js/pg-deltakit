@@ -23,3 +23,9 @@ export type Operation = {
   name: string,
   changes?: Changes
 };
+
+export type Client = {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query(query: string, args?: any[]): Promise<any>;
+}

@@ -7,8 +7,8 @@ import type { ColumnDefinition } from '../types/index.d.ts';
 export class Diff {
   protected source: Schema;
   protected destination: Schema;
-  protected migration: Migration;
-  protected rollback: Migration;
+  protected migration?: Migration;
+  protected rollback?: Migration;
 
   constructor(source: Schema, destination: Schema) {
     this.source = source;
@@ -120,6 +120,12 @@ export class Diff {
         to[key] = objB[key];
       }
     });
+
+    // if changes include length, then also include type
+    if (to.length) {
+      from.type = objA.type;
+      to.type = objB.type;
+    }
   
     return { from, to };
   }

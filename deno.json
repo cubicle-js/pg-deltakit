@@ -12,5 +12,9 @@
       "lineWidth": 80,             // Set max line width for formatting
       "indentWidth": 2             // Set indentation width
     }
-  }
+  },
+  "imports": {
+    "pg-protocol": "npm:pg-protocol@1.7.0"
+  },
+  "nodeModulesDir": "auto"
 }

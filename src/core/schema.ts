@@ -1,5 +1,4 @@
-import { Client, TransactionError } from "./client.ts";
-import type { SchemaDefinition, TableDefinition, ColumnDefinition } from "../types/index.d.ts";
+import type { SchemaDefinition, TableDefinition, ColumnDefinition, Client } from "../types/index.d.ts";
 import { CONFIG } from "../config.ts";
 
 export class Schema {
@@ -7,7 +6,8 @@ export class Schema {
 
   private static readonly COLUMN_QUERY = `
     SELECT 
-      table_name, column_name, data_type, character_maximum_length AS length, 
+      table_name AS table, column_name AS column, 
+      data_type AS type, character_maximum_length AS length, 
       is_nullable = 'YES' AS nullable, column_default AS default_info 
     FROM information_schema.columns 
     WHERE table_schema = $1;
@@ -15,7 +15,8 @@ export class Schema {
 
   private static readonly CONSTRAINT_QUERY = `
     SELECT 
-      tc.table_name, ccu.column_name, tc.constraint_name, tc.constraint_type, 
+      tc.table_name AS table, ccu.column_name AS column, 
+      tc.constraint_name AS constraint_name, tc.constraint_type AS constraint_type, 
       ccu.table_name AS references, kcu.column_name AS fk_column 
     FROM information_schema.table_constraints AS tc 
     JOIN information_schema.constraint_column_usage AS ccu 
@@ -91,13 +92,14 @@ export class Schema {
   }
 
   public static async fromDatabase(client : Client, schema:string='public'): Promise<Schema> {
-    await client.connect();
+    // await client.connect();
 
     let definition: Partial<SchemaDefinition> = {};
 
-    const queryColumns = await client.queryArray(this.COLUMN_QUERY, [schema]);
+    const queryColumns = await client.query(this.COLUMN_QUERY, [schema]);
+    
     queryColumns.rows.map((row: any) => { 
-      const [ table, column, type, length, nullable, default_info ] = row;
+      const { table, column, type, length, nullable, default_info } = row;
 
       /**
        * Parse default value meta-data and normalise
@@ -125,9 +127,9 @@ export class Schema {
       }
     });
 
-    const queryConstraints = await client.queryArray(this.CONSTRAINT_QUERY, [schema]);
+    const queryConstraints = await client.query(this.CONSTRAINT_QUERY, [schema]);
     queryConstraints.rows.map((row: any) => { 
-      const [ table, column, constraint_name, constraint_type, references, fk_column ] = row;
+      const { table, column, constraint_name, constraint_type, references, fk_column } = row;
 
       /**
        * Debugging
@@ -140,19 +142,19 @@ export class Schema {
 
       switch(constraint_type) {
         case 'PRIMARY KEY':
-          definition[table][column].primary = true;
+          (definition[table][column] as ColumnDefinition).primary = true;
           break;
         case 'UNIQUE':
-          definition[table][column].unique = true;
+          (definition[table][column] as ColumnDefinition).unique = true;
           break;
         case 'FOREIGN KEY':
-          definition[table][fk_column].references = references;
+          (definition[table][fk_column] as ColumnDefinition).references = references;
           break;
       }
     });
 
     // console.log('DEF FROM DB', definition);
-    await client.end();
+    // await client.end();
     return new Schema(definition as SchemaDefinition);
   }
 }

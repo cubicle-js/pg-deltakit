@@ -1,7 +1,6 @@
-import { Client, TransactionError } from "./client.ts";
 import { Utils } from "./utils.ts";
 
-import type { Operation, Changes, ColumnDefinition } from "../types/index.d.ts";
+import type { Operation, Changes, ColumnDefinition, Client } from "../types/index.d.ts";
 
 import { quote } from '../../../esc/src/mod.ts';
 
@@ -32,10 +31,13 @@ export class Migration {
   protected operations: { [key: string]: Operation[]; } = {
     "create.tables": [],
     "create.columns": [],
+    "drop.foreignkeys": [],
     "drop.constraints": [],
     "alter.columns": [],
     "alter.constraints": [],
+    "alter.foreignkeys": [],
     "create.constraints": [],
+    "create.foreignkeys": [],
     "drop.columns": [],
     "drop.tables": [],
   }
@@ -73,7 +75,9 @@ export class Migration {
   }
 
   reverse(): Migration {
-    this.getOperations().reverse();
+    this.operations = Object.fromEntries(
+      Object.entries(this.operations).reverse()
+    );
     return this;
   }
   
@@ -81,93 +85,112 @@ export class Migration {
     const queries = this.toSQL();
     
     try {
-      await client.connect();
-      const transaction = await client.createTransaction("migration", {
-        isolation_level: "serializable",
-      });
+      // await client.connect();
+      await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
 
-      await transaction.begin();
       for (const query of queries) {
         try {
-          await transaction.queryArray(query); // Attempt to execute the query
+          await client.query(query);
         } 
         catch (e) {
+          if (typeof e.cause === 'undefined') {
+            e.cause = {};
+          }
           e.cause.query = query;
           throw new Error(e.message, e);
         }
       }
-      await transaction.commit(); // Commit the transaction if all queries succeed
-    } catch (e) {
+
+      await client.query('COMMIT');
+    } 
+    catch (e) {
       console.error(`Transaction failed: ${e.message}`);
-      console.error(`Query failed: ${e.cause.query}`);
-      console.error(`Caused by: ${e.cause.message}`);
+      console.error(`Query failed: ${e.cause?.query}`);
+      console.error(`Caused by: ${e.cause?.message}`);
       throw e;
-    } finally {
-      await client.end(); // Ensure the client connection is closed
+    } 
+    finally {
+      // await client.end(); // Ensure the client connection is closed
     }
 
     return queries;
   }
 
   toSQL(): string[] { 
-    const queries: string[] = [];
-    const queriesLast: string[] = [];
+    const queries: { [key: string]: string[]; } = {};
 
-    for (const operation of this.getOperations()) {
-      const [ table, column ] = operation.name.split('.');
+    for ( const key of Object.keys(this.operations) ) {
+      queries[key] = [];
+    }
 
-      // Tables
-      if(operation.target === 'tables') {
-        switch (operation.type) {
-          case 'create': queries.push(`CREATE TABLE ${quote.id(operation.name)} ();`); break;
-          case 'drop': queriesLast.push(`DROP TABLE ${quote.id(operation.name)};`); break;
-        }
-      }
-      else {
-        if (typeof operation.changes?.to === 'undefined' ) {
-          throw new Error('Changes to column definition (changes.to) are required for target:columns and target:constraints');
-        }
+    for ( const key of Object.keys(this.operations) ) { 
 
-        // Columns
-        if (operation.target === 'columns') {
+      for (const operation of this.operations[key] as Operation[]) {
+        const [ table, column ] = operation.name.split('.');
+
+        // Tables
+        if(operation.target === 'tables') {
           switch (operation.type) {
-            case 'drop':
-              queries.push(`ALTER TABLE ${quote.id(table)} DROP COLUMN ${quote.id(column)};`);
-              break;
-            case 'create':
-              // Create Column
-              queries.push((() => {
-                const type = this._toSQLType(operation.changes.to);
-                let query = `ALTER TABLE ${quote.id(table)} ADD COLUMN ${quote.id(column)} ${type}`;
-                if (operation.changes.to?.nullable === false) { query += ' NOT NULL'; }
-                if (operation.changes.to?.default != null) { 
-                  // const defaultValue = operation.changes.to?.default.replace('"', '\\"');
-                  query += ` DEFAULT ${quote.sql(operation.changes.to?.default)}`; 
-                }
-                query += ';';
-                return query;
-              })());
-              break;
-            case 'alter':
-              const alter_queries = this._toSQLColumnHelper(table, column, operation.changes);
-              if (alter_queries.length > 0) {
-                queries.push(`ALTER TABLE ${quote.id(table)} ` + alter_queries.join(', '));
-              }
+            case 'create': queries[key].push(`CREATE TABLE ${quote.id(operation.name)} ();`); break;
+            case 'drop': queries[key].push(`DROP TABLE ${quote.id(operation.name)};`); break;
           }
         }
+        else {
+          if (typeof operation.changes?.to === 'undefined' ) {
+            throw new Error('Changes to column definition (changes.to) are required for target:columns and target:constraints');
+          }
 
-        // Constraints
-        const constraint_queries = this._toSQLConstraintHelper(table, column, operation.changes);
-        if (constraint_queries.length > 0) {
-          queries.push(`ALTER TABLE ${quote.id(table)} ` + constraint_queries.join(', '));
+          // Columns
+          if (operation.target === 'columns') {
+            switch (operation.type) {
+              case 'drop':
+                queries[key].push(`ALTER TABLE ${quote.id(table)} DROP COLUMN ${quote.id(column)};`);
+                break;
+              case 'create':
+                // Create Column
+                queries[key].push((() => {
+                  const type = this._toSQLType(operation.changes.to);
+                  let query = `ALTER TABLE ${quote.id(table)} ADD COLUMN ${quote.id(column)} ${type}`;
+                  if (operation.changes.to?.nullable === false) { query += ' NOT NULL'; }
+                  if (operation.changes.to?.default != null) { 
+                    // const defaultValue = operation.changes.to?.default.replace('"', '\\"');
+                    query += ` DEFAULT ${quote.sql(operation.changes.to?.default)}`; 
+                  }
+                  query += ';';
+                  return query;
+                })());
+                break;
+              case 'alter':
+                const alter_queries = this._toSQLColumnHelper(table, column, operation.changes);
+                if (alter_queries.length > 0) {
+                  queries[key].push(`ALTER TABLE ${quote.id(table)} ` + alter_queries.join(', '));
+                }
+            }
+          }
+
+          // Constraints
+          const constraint_queries = this._toSQLConstraintHelper(table, column, operation.changes);
+          if (constraint_queries.add.length > 0) {
+            queries['create.constraints'].push(`ALTER TABLE ${quote.id(table)} ` + constraint_queries.add.join(', '));
+          }
+          if (constraint_queries.drop.length > 0) {
+            queries['drop.constraints'].push(`ALTER TABLE ${quote.id(table)} ` + constraint_queries.drop.join(', '));
+          }
+
+          // Foreign Keys
+          const foreignkeys_queries = this._toSQLForeignKeyHelper(table, column, operation.changes);
+          if (foreignkeys_queries.add.length > 0) {
+            queries['create.foreignkeys'].push(`ALTER TABLE ${quote.id(table)} ` + foreignkeys_queries.add.join(', '));
+          }
+          if (foreignkeys_queries.drop.length > 0) {
+            queries['drop.foreignkeys'].push(`ALTER TABLE ${quote.id(table)} ` + foreignkeys_queries.drop.join(', '));
+          }
+
         }
-
       }
     }
 
-    queries.push(...queriesLast);
-
-    return queries;
+    return Utils.combine(... Object.values(queries)) as string[];
   }
 
   _toSQLColumnHelper(table: string, column: string, changes: Changes) : string[] {
@@ -178,7 +201,8 @@ export class Migration {
       from: this._toSQLType(changes.from as Partial<ColumnDefinition>),
     };
     if (sqlTypes.to !== sqlTypes.from) {
-      subqueries.push(`SET TYPE ${sqlTypes.to}`);
+      subqueries.push(`TYPE ${sqlTypes.to}`);
+      // subqueries.push(`SET TYPE ${sqlTypes.to}`);
     }
 
     if (
@@ -216,37 +240,49 @@ export class Migration {
     });
   }
 
-  _toSQLConstraintHelper(table: string, column: string, changes: Partial<Changes>) : string[] {
-    const subqueries: string[] = [];
+  _toSQLConstraintHelper(table: string, column: string, changes: Partial<Changes>) : { [key: string]: string[]; } {
+    const subqueries: { [key: string]: string[]; } = {
+      add: [],
+      drop: []
+    };
 
     if (changes.to?.primary !== changes.from?.primary) {
       const constraint_name = `${table}_${column}_primary`;
       if (changes.to?.primary == true) {
-        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} PRIMARY KEY (${quote.id(column)})`);
+        subqueries.add.push(`ADD CONSTRAINT ${quote.id(constraint_name)} PRIMARY KEY (${quote.id(column)})`);
       }
       else if (typeof changes.from?.primary !== 'undefined' && changes.to?.primary == false) {
-        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
+        subqueries.drop.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
 
     if (changes.to?.unique !== changes.from?.unique) {
       const constraint_name = `${table}_${column}_unique`;
       if (changes.to?.unique == true) {
-        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} UNIQUE (${quote.id(column)})`);
+        subqueries.add.push(`ADD CONSTRAINT ${quote.id(constraint_name)} UNIQUE (${quote.id(column)})`);
       }
       else if (typeof changes.from?.unique !== 'undefined' && changes.to?.unique == false) {
-        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
+        subqueries.drop.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
-   
+
+    return subqueries;
+  }
+
+  _toSQLForeignKeyHelper(table: string, column: string, changes: Partial<Changes>) : { [key: string]: string[]; } {
+    const subqueries: { [key: string]: string[]; } = {
+      add: [],
+      drop: []
+    };
+
     if (changes.to?.references !== changes.from?.references) {
       const constraint_name = `${table}_${column}_foreignkey`;
       
       if (changes.to?.references != null) {
-        subqueries.push(`ADD CONSTRAINT ${quote.id(constraint_name)} FOREIGN KEY (${quote.id(column)}) REFERENCES ${quote.id(changes.to?.references)}`);
+        subqueries.add.push(`ADD CONSTRAINT ${quote.id(constraint_name)} FOREIGN KEY (${quote.id(column)}) REFERENCES ${quote.id(changes.to?.references)}`);
       }
       else if (typeof changes.to?.references === 'undefined') {
-        subqueries.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
+        subqueries.drop.push(`DROP CONSTRAINT ${quote.id(constraint_name)}`);
       }
     }
 
